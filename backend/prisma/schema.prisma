@@ -1,0 +1,323 @@
+// /backend/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Core Authentication & Authorization ---
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)
+  description String?
+  permissions Json     @default("[]") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                String    @id @default(uuid())
+  name              String    @db.VarChar(255)
+  email             String    @unique @db.VarChar(255)
+  passwordHash      String    @map("password_hash") @db.VarChar(255)
+  roleId            Int?      @map("role_id")
+  isActive          Boolean   @default(true) @map("is_active")
+  emailVerifiedAt   DateTime? @map("email_verified_at")
+  lastLoginAt       DateTime? @map("last_login_at")
+  refreshTokenHash  String?   @map("refresh_token_hash") @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  role              Role?     @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  projects          Project[] @relation("AccountExecutiveProjects")
+  tasks             ProjectTask[]
+  createdPurchaseOrders PurchaseOrder[]
+  createdInvoices     Invoice[]
+  uploadedAttachments Attachment[]
+  notifications       Notification[]
+  activityLogs        ActivityLog[]
+
+  @@index([roleId, isActive])
+  @@map("users")
+}
+
+// --- Master Data ---
+model BusinessCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique @db.VarChar(255)
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  clients     Client[]
+
+  @@map("business_categories")
+}
+
+model Client {
+  id                 String            @id @default(uuid())
+  name               String            @unique @db.VarChar(255)
+  businessCategoryId String?           @map("business_category_id")
+  contactPerson      String?           @map("contact_person") @db.VarChar(255)
+  email              String?           @db.VarChar(255)
+  phoneNumber        String?           @map("phone_number") @db.VarChar(50)
+  address            String?
+  taxNumber          String?           @map("tax_number") @db.VarChar(100)
+  isActive           Boolean           @default(true) @map("is_active")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  businessCategory   BusinessCategory? @relation(fields: [businessCategoryId], references: [id], onDelete: SetNull)
+  brands             Brand[]
+  projects           Project[]
+
+  @@map("clients")
+}
+
+model Vendor {
+  id            String          @id @default(uuid())
+  name          String          @unique @db.VarChar(255)
+  contactPerson String?         @map("contact_person") @db.VarChar(255)
+  email         String?         @db.VarChar(255)
+  phoneNumber   String?         @map("phone_number") @db.VarChar(50)
+  address       String?
+  taxNumber     String?         @map("tax_number") @db.VarChar(100)
+  bankAccount   String?         @map("bank_account") @db.VarChar(100)
+  isActive      Boolean         @default(true) @map("is_active")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  purchaseOrders PurchaseOrder[]
+
+  @@map("vendors")
+}
+
+model Brand {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(255)
+  clientId    String   @map("client_id")
+  description String?
+  logoUrl     String?  @map("logo_url")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([name, clientId])
+  @@map("brands")
+}
+
+// --- Project Management ---
+model Project {
+  id                 String          @id @default(uuid())
+  name               String          @db.VarChar(255)
+  description        String?
+  clientId           String?         @map("client_id")
+  accountExecutiveId String?         @map("account_executive_id")
+  startDate          DateTime?       @map("start_date") @db.Date
+  endDate            DateTime?       @map("end_date") @db.Date
+  status             ProjectStatus   @default(NotStarted)
+  totalValue         Decimal         @default(0) @map("total_value") @db.Decimal(15, 2)
+  priority           Priority        @default(Medium)
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  client             Client?         @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  accountExecutive   User?           @relation("AccountExecutiveProjects", fields: [accountExecutiveId], references: [id], onDelete: SetNull)
+  finances           ProjectFinance?
+  tasks              ProjectTask[]
+  purchaseOrders     PurchaseOrder[]
+  invoices           Invoice[]
+
+  @@index([clientId, status])
+  @@index([accountExecutiveId, status])
+  @@map("projects")
+}
+
+model ProjectFinance {
+  id                    String   @id @default(uuid())
+  projectId             String   @unique @map("project_id")
+  totalRevenue          Decimal  @default(0) @map("total_revenue") @db.Decimal(15, 2)
+  operationalCost       Decimal  @default(0) @map("operational_cost") @db.Decimal(15, 2)
+  downPaymentPercentage Decimal  @default(0) @map("down_payment_percentage") @db.Decimal(5, 2)
+  downPaymentAmount     Decimal  @default(0) @map("down_payment_amount") @db.Decimal(15, 2)
+  pphPercentage         Decimal  @default(2.00) @map("pph_percentage") @db.Decimal(5, 2)
+  ppnPercentage         Decimal  @default(11.00) @map("ppn_percentage") @db.Decimal(5, 2)
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_finances")
+}
+
+model ProjectTask {
+  id             String     @id @default(uuid())
+  projectId      String     @map("project_id")
+  title          String     @db.VarChar(255)
+  description    String?
+  assigneeId     String?    @map("assignee_id")
+  status         TaskStatus @default(NotStarted)
+  priority       Priority   @default(Medium)
+  dueDate        DateTime?  @map("due_date") @db.Date
+  completedAt    DateTime?  @map("completed_at")
+  estimatedHours Int?       @map("estimated_hours")
+  actualHours    Int?       @map("actual_hours")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee       User?      @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([assigneeId])
+  @@map("project_tasks")
+}
+
+// --- Financial Documents ---
+model PurchaseOrder {
+  id           String              @id @default(uuid())
+  poNumber     String              @unique @map("po_number") @db.VarChar(100)
+  projectId    String?             @map("project_id")
+  vendorId     String?             @map("vendor_id")
+  orderDate    DateTime            @map("order_date") @db.Date
+  deliveryDate DateTime?           @map("delivery_date") @db.Date
+  totalAmount  Decimal             @map("total_amount") @db.Decimal(15, 2)
+  taxAmount    Decimal             @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  status       PurchaseOrderStatus @default(Draft)
+  notes        String?
+  createdById  String?             @map("created_by_id")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  project      Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  vendor       Vendor?             @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdBy    User?               @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("purchase_orders")
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  invoiceNumber  String        @unique @map("invoice_number") @db.VarChar(100)
+  projectId      String?       @map("project_id")
+  issueDate      DateTime      @map("issue_date") @db.Date
+  dueDate        DateTime      @map("due_date") @db.Date
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(15, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(15, 2)
+  discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(15, 2)
+  status         InvoiceStatus @default(Draft)
+  paymentDate    DateTime?     @map("payment_date") @db.Date
+  notes          String?
+  createdById    String?       @map("created_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("invoices")
+}
+
+// --- Supporting Tables ---
+model Attachment {
+  id             String   @id @default(uuid())
+  fileName       String   @map("file_name") @db.VarChar(255)
+  filePath       String   @map("file_path")
+  fileType       String?  @map("file_type") @db.VarChar(100)
+  fileSize       BigInt?  @map("file_size")
+  mimeType       String?  @map("mime_type") @db.VarChar(100)
+  attachableId   String   @map("attachable_id")
+  attachableType String   @map("attachable_type") @db.VarChar(50)
+  uploadedById   String?  @map("uploaded_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  uploadedBy     User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([attachableType, attachableId])
+  @@map("attachments")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String           @map("user_id")
+  title     String           @db.VarChar(255)
+  message   String
+  type      NotificationType @default(info)
+  isRead    Boolean          @default(false) @map("is_read")
+  linkTo    String?          @map("link_to")
+  metadata  Json             @default("{}") @db.JsonB
+  expiresAt DateTime?        @map("expires_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model ActivityLog {
+  id           BigInt   @id @default(autoincrement())
+  userId       String?  @map("user_id")
+  action       String   @db.VarChar(100)
+  resourceType String?  @map("resource_type") @db.VarChar(50)
+  resourceId   String?  @map("resource_id")
+  oldValues    Json?    @map("old_values") @db.JsonB
+  newValues    Json?    @map("new_values") @db.JsonB
+  ipAddress    String?  @map("ip_address") @db.Inet
+  userAgent    String?  @map("user_agent")
+  sessionId    String?  @map("session_id") @db.VarChar(255)
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([resourceType, resourceId])
+  @@map("activity_logs")
+}
+
+// --- Enums ---
+enum ProjectStatus {
+  NotStarted @map("Not Started")
+  InProgress @map("In Progress")
+  OnHold     @map("On Hold")
+  Completed
+  Cancelled
+}
+
+enum TaskStatus {
+  NotStarted @map("Not Started")
+  InProgress @map("In Progress")
+  OnHold     @map("On Hold")
+  Done
+  Cancelled
+}
+
+enum Priority {
+  Low
+  Medium
+  High
+  Critical
+}
+
+enum PurchaseOrderStatus {
+  Draft
+  NotYetSent    @map("Not Yet Sent")
+  Sent
+  PODelivered   @map("PO Delivered")
+  Received
+  Cancelled
+}
+
+enum InvoiceStatus {
+  Draft
+  NotYetSent       @map("Not Yet Sent")
+  Sent
+  InvoiceDelivered @map("Invoice Delivered")
+  Paid
+  Overdue
+  Cancelled
+}
+
+enum NotificationType {
+  info
+  success
+  warning
+  error
+}

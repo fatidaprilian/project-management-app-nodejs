@@ -1,0 +1,86 @@
+# /project-management-system/docker-compose.yml
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pms_backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - ./backend/.env
+    command: sh -c "npm install && npm run start:dev"
+    networks:
+      - pms_network
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pms_frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    env_file:
+      - ./frontend/.env.local
+    command: sh -c "npm install && npm run dev"
+    networks:
+      - pms_network
+
+  db:
+    image: postgres:15-alpine
+    container_name: pms_db
+    ports:
+      - "5432:5432"
+    # This block is essential. It tells Docker to create the user and DB.
+    environment:
+      POSTGRES_USER: pms_user # <-- UBAH DI SINI
+      POSTGRES_PASSWORD: pms_password # <-- UBAH DI SINI
+      POSTGRES_DB: pms_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - pms_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d pms_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: pms_redis
+    ports:
+      - "6379:6379"
+    networks:
+      - pms_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: pms_mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    networks:
+      - pms_network
+
+volumes:
+  postgres_data:
+
+networks:
+  pms_network:
+    driver: bridge

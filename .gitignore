@@ -1,0 +1,38 @@
+# /project-management-system/.gitignore
+
+# Dependencies
+# Jangan pernah commit folder node_modules
+/node_modules
+/backend/node_modules
+/frontend/node_modules
+
+# Build output
+# Folder hasil build tidak perlu di-commit
+/dist
+/backend/dist
+/frontend/.next
+/frontend/out
+
+# Environment variables
+# File .env berisi rahasia dan konfigurasi lokal, JANGAN di-commit
+.env
+.env*
+*.env
+/backend/.env
+/frontend/.env.local
+
+# Logs
+# File log tidak perlu di-commit
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# IDE & System files
+# File spesifik untuk sistem operasi atau editor
+.DS_Store
+.vscode/
+.idea/
+
+# Prisma
+# Abaikan file cache atau file sementara dari Prisma
+/backend/prisma/client
